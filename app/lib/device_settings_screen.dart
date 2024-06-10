@@ -19,26 +19,40 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
   bool _switchValue = false;
   
 
-    Future<void> _showInputDialog(BuildContext context, Function(String) onSubmitted) async {
+    Future<void> _showInputDialog(BuildContext context, Function(String,String) onSubmitted) async {
     TextEditingController _textFieldController = TextEditingController();
+    TextEditingController _ssidController = TextEditingController();
 
     await showDialog<void>(
       context: context,
       barrierDismissible: false, // пользователь должен нажать на кнопку!
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text('Enter wifi password'),
-          content: TextField(
-            controller: _textFieldController,
-            decoration: InputDecoration(hintText: "Enter data here"),
+          title: Text('Enter SSID and wifi password'),
+          content:Column(children: [
+          TextField(
+            controller: _ssidController,
+            decoration: InputDecoration(hintText: "Enter SSID here"),
           ),
+          SizedBox(height: 10),
+
+          TextField(
+            controller: _textFieldController,
+            decoration: InputDecoration(hintText: "Enter password here"),
+          ),
+
+          ],),
+          
+
+
           actions: <Widget>[
             TextButton(
               child: Text('Save'),
               onPressed: () {
-                String enteredData = _textFieldController.text;
+                String password = _textFieldController.text;
+                String ssid = _ssidController.text;
                 Navigator.of(context).pop(); // Закрываем диалог
-                onSubmitted(enteredData); // Передаем введенные данные
+                onSubmitted(password,ssid); // Передаем введенные данные
               },
             ),
           ],
@@ -83,66 +97,52 @@ Future<void> _ledQuery(bool state,String macAddr) async {
 }
 
 // функция представляет собой коннект с платой, передача и принятие ascii кодов, передача пароля , ssid , пароля от wifi
-  void _connectToDevice(BluetoothDevice device, String ssid) async {
+  void _connectToDevice(BluetoothDevice device, String password , String ssid) async {
     try {
       
       final connection = await BluetoothConnection.toAddress(device.address);
       print('Connected to the device');
-
-      connection.input!.listen((data) async {
-        String receivedData = ascii.decode(data);
-
-        // После получения первого сообщения отправляем пароль
-        String password = "1641";
-        connection.output.add(ascii.encode(password + "\r\n"));
-        await connection.output.allSent;
-        
-        // Слушаем последующие данные от устройства
         connection.input!.listen((data) async {
-          // true password
           String receivedData = ascii.decode(data);
           
-          connection.input!.listen((data) async {
-            // ssid
-            String receivedData = ascii.decode(data);
-            String ssid = WifiInfo().getWifiName().toString();
-            connection.output.add(ascii.encode(ssid + "\r\n"));
+          if (receivedData.contains("Print Bluetooth")){
+            String password = "1641";
+            connection.output.add(utf8.encode("$password\r\n"));
             await connection.output.allSent;
-            
-            connection.input!.listen((data) async {
-              // wifi password
-              String receivedData = ascii.decode(data);
-              SharedPreferences prefs = await SharedPreferences.getInstance();
-              
-              String? wifiPassword = await prefs.getString(ssid);
-              connection.output.add(ascii.encode(wifiPassword.toString() + "\r\n"));
-              await connection.output.allSent;
-              
-              connection.input!.listen((data) async{
-                // connected
-                String receivedData = ascii.decode(data);
+            await Future.delayed(Duration(milliseconds: 200));
 
-                connection.input!.listen((data) async {
-                  // ip
-                  String receivedData  = ascii.decode(data);
-                  
-                  connection.input!.listen((data) async {
-                    String receivedData = ascii.decode(data);
-                      // Сохраняем данные в SharedPreferences MAC-addr : ipLocalhost
-                      SharedPreferences prefs = await SharedPreferences.getInstance();
-                      await prefs.setString(device.address, receivedData);
-                      setState(() {
-                        _isConnected = true;
-                      });
-                      print('Data saved to SharedPreferences');
-                      connection.finish(); // Закрываем соединение
-                   }).onDone(() { });
-                 }).onDone(() { });
-               }).onDone(() { });
-             }).onDone(() {});
-           }).onDone(() {});
-        }).onDone(() {});
-      }).onDone(() {});
+          }
+          else if (receivedData.contains("true password")){
+            await Future.delayed(Duration(milliseconds: 200));
+          }
+          else if (receivedData.contains("SSID")){
+            connection.output.add(utf8.encode("$ssid\r\n"));
+            await connection.output.allSent;
+            await Future.delayed(Duration(milliseconds: 200));
+          }
+          else if (receivedData.contains("Print password")){
+            
+            String wifiPassword = password;
+        
+            connection.output.add(utf8.encode(wifiPassword + "\r\n"));
+            await connection.output.allSent;
+            await Future.delayed(Duration(milliseconds: 200));
+          }
+          else if (receivedData.contains("192")){
+            // Сохраняем данные в SharedPreferences MAC-addr : ipLocalhost
+            SharedPreferences prefs = await SharedPreferences.getInstance();
+            await prefs.setString(device.address, receivedData);
+            setState(() {
+              _isConnected = true;
+            });
+            print('Data saved to SharedPreferences');
+            connection.finish(); // Закрываем соединение
+          }
+          
+        }).onDone(() { });
+        
+        
+      
     } catch (e) {
       print('Error: $e');
     }
@@ -171,10 +171,10 @@ Future<void> _ledQuery(bool state,String macAddr) async {
             SizedBox(height: 10),
             // при нажатии нужно сделать подключение 
             TextButton(onPressed: () async {
-              await _showInputDialog(context, (enteredData) async {
+              await _showInputDialog(context, (password,ssid) async {
                   // Если пользователь ввел данные, выполняем подключение
-                  if (enteredData.isNotEmpty) {
-                     _connectToDevice(widget.device, enteredData);
+                  if (password.isNotEmpty && ssid.isNotEmpty) {
+                     _connectToDevice(widget.device, password,ssid);
                   }
                 });
             }, child: Text(_isConnected ? 'подключение произведено' : 'connect')),
