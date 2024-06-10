@@ -17,8 +17,9 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
   bool _isConnected = false;
   double _powerValue = 0;
   bool _switchValue = false;
+  String _ip = 'NaN';
   
-
+  String _url = 'NaN';
     Future<void> _showInputDialog(BuildContext context, Function(String,String) onSubmitted) async {
     TextEditingController _textFieldController = TextEditingController();
     TextEditingController _ssidController = TextEditingController();
@@ -68,7 +69,10 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
       String? ipAddr = prefs.getString(macAddr);
       final url = Uri.https(ipAddr.toString(),"/power_$value");
       final response = await http.get(url);
-      
+      setState(() {
+        _url = url.toString();
+        
+        });
     }
     catch(e){
       print(e);
@@ -82,10 +86,16 @@ Future<void> _ledQuery(bool state,String macAddr) async {
       String? ipAddr = prefs.getString(macAddr);
       if (state == true){
         final url = Uri.https(ipAddr.toString(),"/led_on");
+        setState(() {
+        _url = url.toString();
+        });
         final response = await http.get(url);
       }
       else {
         final url =Uri.https(ipAddr.toString(),"/led_off");
+        setState(() {
+        _url = url.toString();
+        });
         final response = await http.get(url);
       }
     }
@@ -103,6 +113,8 @@ Future<void> _ledQuery(bool state,String macAddr) async {
       final connection = await BluetoothConnection.toAddress(device.address);
       print('Connected to the device');
         connection.input!.listen((data) async {
+          await Future.delayed(Duration(milliseconds: 200));
+
           String receivedData = ascii.decode(data);
           
           if (receivedData.contains("Print Bluetooth")){
@@ -128,14 +140,16 @@ Future<void> _ledQuery(bool state,String macAddr) async {
             await connection.output.allSent;
             await Future.delayed(Duration(milliseconds: 200));
           }
-          else if (receivedData.contains("192")){
+          else if (receivedData.startsWith("192.168")){
             // Сохраняем данные в SharedPreferences MAC-addr : ipLocalhost
             SharedPreferences prefs = await SharedPreferences.getInstance();
             await prefs.setString(device.address, receivedData);
             setState(() {
               _isConnected = true;
+              _ip = receivedData;
             });
-            print('Data saved to SharedPreferences');
+            connection.output.add(utf8.encode("mne prishol ip - $receivedData\r\n"));
+            await connection.output.allSent;           
             connection.finish(); // Закрываем соединение
           }
           
@@ -204,8 +218,13 @@ Future<void> _ledQuery(bool state,String macAddr) async {
                         _switchValue = value;
                       });
                       _ledQuery(value, widget.device.address);
-                    })
-
+                    }),  
+                  SizedBox(height: 10,),
+                  Text("последний запрос"),
+                  SizedBox(height: 10,),
+                  Text("$_url"),
+                  SizedBox(height: 10,),
+                  Text("айпи адрес - $_ip"),
 
 
                 ],
