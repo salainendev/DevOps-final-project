@@ -68,11 +68,11 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
       SharedPreferences prefs = await SharedPreferences.getInstance();
       String? ipAddr = prefs.getString(macAddr);
       final url = Uri.https(ipAddr.toString(),"/power_$value");
-      final response = await http.get(url);
       setState(() {
         _url = url.toString();
-        
+
         });
+      final response = await http.get(url);
     }
     catch(e){
       print(e);
@@ -140,7 +140,7 @@ Future<void> _ledQuery(bool state,String macAddr) async {
             await connection.output.allSent;
             await Future.delayed(Duration(milliseconds: 200));
           }
-          else if (receivedData.startsWith("192.168")){
+          else if (receivedData.contains("192.168")){
             // Сохраняем данные в SharedPreferences MAC-addr : ipLocalhost
             SharedPreferences prefs = await SharedPreferences.getInstance();
             await prefs.setString(device.address, receivedData);
@@ -203,6 +203,7 @@ Future<void> _ledQuery(bool state,String macAddr) async {
                     min:0,
                     max:100,
                     divisions: 5,
+                    label: _powerValue.round().toString(),
                     onChanged:(double value) {
                           setState(() {
                             _powerValue = value;
