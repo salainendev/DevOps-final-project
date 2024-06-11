@@ -18,9 +18,9 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
   double _powerValue = 0;
   bool _switchValue = false;
   String _ip = 'NaN';
-  
+  String _lastRecieved = "nan";
   String _url = 'NaN';
-    Future<void> _showInputDialog(BuildContext context, Function(String,String) onSubmitted) async {
+  Future<void> _showInputDialog(BuildContext context, Function(String,String) onSubmitted) async {
     TextEditingController _textFieldController = TextEditingController();
     TextEditingController _ssidController = TextEditingController();
 
@@ -31,19 +31,19 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
         return AlertDialog(
           title: Text('Enter SSID and wifi password'),
           content:Column(children: [
-          TextField(
-            controller: _ssidController,
-            decoration: InputDecoration(hintText: "Enter SSID here"),
-          ),
-          SizedBox(height: 10),
+            TextField(
+              controller: _ssidController,
+              decoration: InputDecoration(hintText: "Enter SSID here"),
+            ),
+            SizedBox(height: 10),
 
-          TextField(
-            controller: _textFieldController,
-            decoration: InputDecoration(hintText: "Enter password here"),
-          ),
+            TextField(
+              controller: _textFieldController,
+              decoration: InputDecoration(hintText: "Enter password here"),
+            ),
 
           ],),
-          
+
 
 
           actions: <Widget>[
@@ -67,11 +67,11 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
     try {
       SharedPreferences prefs = await SharedPreferences.getInstance();
       String? ipAddr = prefs.getString(macAddr);
-      final url = Uri.https(ipAddr.toString(),"/power_$value");
+      final url = Uri.http(ipAddr.toString(),"/power_$value");
       setState(() {
         _url = url.toString();
 
-        });
+      });
       final response = await http.get(url);
     }
     catch(e){
@@ -79,22 +79,22 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
     }
   }
 
-Future<void> _ledQuery(bool state,String macAddr) async {
+  Future<void> _ledQuery(bool state,String macAddr) async {
 
     try{
       SharedPreferences prefs = await SharedPreferences.getInstance();
       String? ipAddr = prefs.getString(macAddr);
       if (state == true){
-        final url = Uri.https(ipAddr.toString(),"/led_on");
+        final url = Uri.http(ipAddr.toString(),"/led_on");
         setState(() {
-        _url = url.toString();
+          _url = url.toString();
         });
         final response = await http.get(url);
       }
       else {
-        final url =Uri.https(ipAddr.toString(),"/led_off");
+        final url =Uri.http(ipAddr.toString(),"/led_off");
         setState(() {
-        _url = url.toString();
+          _url = url.toString();
         });
         final response = await http.get(url);
       }
@@ -104,59 +104,62 @@ Future<void> _ledQuery(bool state,String macAddr) async {
     }
 
 
-}
+  }
 
 // функция представляет собой коннект с платой, передача и принятие ascii кодов, передача пароля , ssid , пароля от wifi
   void _connectToDevice(BluetoothDevice device, String password , String ssid) async {
     try {
-      
+
       final connection = await BluetoothConnection.toAddress(device.address);
       print('Connected to the device');
-        connection.input!.listen((data) async {
+      connection.input!.listen((data) async {
+        await Future.delayed(Duration(milliseconds: 200));
+
+        String receivedData = ascii.decode(data);
+        setState(() {
+          _lastRecieved = receivedData;
+        });
+        if (receivedData.contains("Print Bluetooth")){
+          String password = "1641";
+          connection.output.add(utf8.encode("$password\r\n"));
+          await connection.output.allSent;
           await Future.delayed(Duration(milliseconds: 200));
 
-          String receivedData = ascii.decode(data);
-          
-          if (receivedData.contains("Print Bluetooth")){
-            String password = "1641";
-            connection.output.add(utf8.encode("$password\r\n"));
-            await connection.output.allSent;
-            await Future.delayed(Duration(milliseconds: 200));
+        }
+        else if (receivedData.contains("true password")){
+          await Future.delayed(Duration(milliseconds: 200));
+        }
+        else if (receivedData.contains("Print SSID")){
+          connection.output.add(utf8.encode("$ssid\r\n"));
+          await connection.output.allSent;
+          await Future.delayed(Duration(milliseconds: 200));
+        }
+        else if (receivedData.contains("Print password")){
 
-          }
-          else if (receivedData.contains("true password")){
-            await Future.delayed(Duration(milliseconds: 200));
-          }
-          else if (receivedData.contains("SSID")){
-            connection.output.add(utf8.encode("$ssid\r\n"));
-            await connection.output.allSent;
-            await Future.delayed(Duration(milliseconds: 200));
-          }
-          else if (receivedData.contains("Print password")){
-            
-            String wifiPassword = password;
-        
-            connection.output.add(utf8.encode(wifiPassword + "\r\n"));
-            await connection.output.allSent;
-            await Future.delayed(Duration(milliseconds: 200));
-          }
-          else if (receivedData.contains("192.168")){
-            // Сохраняем данные в SharedPreferences MAC-addr : ipLocalhost
-            SharedPreferences prefs = await SharedPreferences.getInstance();
-            await prefs.setString(device.address, receivedData);
-            setState(() {
-              _isConnected = true;
-              _ip = receivedData;
-            });
-            connection.output.add(utf8.encode("mne prishol ip - $receivedData\r\n"));
-            await connection.output.allSent;           
-            connection.finish(); // Закрываем соединение
-          }
-          
-        }).onDone(() { });
-        
-        
-      
+          String wifiPassword = password;
+
+          connection.output.add(utf8.encode(wifiPassword + "\r\n"));
+          await connection.output.allSent;
+          await Future.delayed(Duration(milliseconds: 200));
+        }
+        else if (receivedData.startsWith("IP")){
+          // Сохраняем данные в SharedPreferences MAC-addr : ipLocalhost
+          SharedPreferences prefs = await SharedPreferences.getInstance();
+          String newreceivedData = receivedData.substring(2);
+          await prefs.setString(device.address, newreceivedData);
+          setState(() {
+            _isConnected = true;
+            _ip = newreceivedData;
+          });
+          connection.output.add(utf8.encode("mne prishol ip - $newreceivedData\r\n"));
+          await connection.output.allSent;
+          connection.finish(); // Закрываем соединение
+        }
+
+      }).onDone(() { });
+
+
+
     } catch (e) {
       print('Error: $e');
     }
@@ -183,14 +186,16 @@ Future<void> _ledQuery(bool state,String macAddr) async {
               style: TextStyle(fontSize: 18.0),
             ),
             SizedBox(height: 10),
-            // при нажатии нужно сделать подключение 
+            // при нажатии нужно сделать подключение
+            Text("last bluetooth - $_lastRecieved"),
+
             TextButton(onPressed: () async {
               await _showInputDialog(context, (password,ssid) async {
-                  // Если пользователь ввел данные, выполняем подключение
-                  if (password.isNotEmpty && ssid.isNotEmpty) {
-                     _connectToDevice(widget.device, password,ssid);
-                  }
-                });
+                // Если пользователь ввел данные, выполняем подключение
+                if (password.isNotEmpty && ssid.isNotEmpty) {
+                  _connectToDevice(widget.device, password,ssid);
+                }
+              });
             }, child: Text(_isConnected ? 'подключение произведено' : 'connect')),
             // Add more settings or actions here
             if(_isConnected)
@@ -205,21 +210,21 @@ Future<void> _ledQuery(bool state,String macAddr) async {
                     divisions: 5,
                     label: _powerValue.round().toString(),
                     onChanged:(double value) {
-                          setState(() {
-                            _powerValue = value;
-                          }); 
-                          _powerQuery(value.round(),widget.device.address);
+                      setState(() {
+                        _powerValue = value;
+                      });
+                      _powerQuery(value.round(),widget.device.address);
                     },
-                    ),
+                  ),
                   SizedBox(height: 10),
                   Switch(
-                    value: _switchValue,
-                    onChanged: (bool value){
-                      setState(() {
-                        _switchValue = value;
-                      });
-                      _ledQuery(value, widget.device.address);
-                    }),  
+                      value: _switchValue,
+                      onChanged: (bool value){
+                        setState(() {
+                          _switchValue = value;
+                        });
+                        _ledQuery(value, widget.device.address);
+                      }),
                   SizedBox(height: 10,),
                   Text("последний запрос"),
                   SizedBox(height: 10,),
