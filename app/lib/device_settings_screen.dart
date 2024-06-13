@@ -5,6 +5,7 @@ import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wifi_info_flutter/wifi_info_flutter.dart';
+import 'dart:io';
 class DeviceSettingsScreen extends StatefulWidget {
   final BluetoothDevice device;
   DeviceSettingsScreen({required this.device});
@@ -17,6 +18,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
   bool _isConnected = false;
   double _powerValue = 0;
   bool _switchValue = false;
+  late Socket socket;
   String _ip = 'NaN';
   String _lastRecieved = "nan";
   String _url = 'NaN';
@@ -67,12 +69,12 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
     try {
       SharedPreferences prefs = await SharedPreferences.getInstance();
       String? ipAddr = prefs.getString(macAddr);
-      final url = Uri.http(ipAddr.toString(),"/power_$value");
+      socket.add(utf8.encode("power_$value\r"));
       setState(() {
-        _url = url.toString();
+        _url = "power_$value\r";
 
       });
-      final response = await http.get(url);
+      Future.delayed(Duration(milliseconds: 200));
     }
     catch(e){
       print(e);
@@ -85,18 +87,18 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
       SharedPreferences prefs = await SharedPreferences.getInstance();
       String? ipAddr = prefs.getString(macAddr);
       if (state == true){
-        final url = Uri.http(ipAddr.toString(),"/led_on");
+        socket.add(utf8.encode("led_on\r"));
         setState(() {
-          _url = url.toString();
+          _url = "led_on\r";
         });
-        final response = await http.get(url);
+        await Future.delayed(Duration(milliseconds: 200));
       }
       else {
-        final url =Uri.http(ipAddr.toString(),"/led_off");
+        socket.add(utf8.encode("led_off\r"));
         setState(() {
-          _url = url.toString();
+          _url = "led_on\r";
         });
-        final response = await http.get(url);
+        await Future.delayed(Duration(milliseconds: 200));
       }
     }
     catch(e){
@@ -147,6 +149,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
           SharedPreferences prefs = await SharedPreferences.getInstance();
           String newreceivedData = receivedData.substring(2);
           await prefs.setString(device.address, newreceivedData);
+          socket = await Socket.connect(newreceivedData,8081);
           setState(() {
             _isConnected = true;
             _ip = newreceivedData;
